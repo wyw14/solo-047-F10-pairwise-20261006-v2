@@ -26,16 +26,16 @@ func (r *Restorer) Restore(ctx context.Context, target *route.Route) (Snapshot, 
 	operation := NewOperation(r.ids.New("restore"), target.Snapshot().ID, r.now())
 	operation.record(StateRestoring, "protection-drain", "draining protection traffic", r.now())
 	if _, err := r.drainer.Drain(ctx, target, r.now()); err != nil {
-		result := operation.record(StateFailed, "protection-drain", err.Error(), r.now())
+		result := operation.recordOutcome(StateFailed, classify(ctx, err), "protection-drain", err.Error(), r.now())
 		return result, err
 	}
 	if _, err := r.topology.Open(target.Snapshot().SpanID, topology.PathProtection, r.now()); err != nil {
-		result := operation.record(StateFailed, "protection-open", err.Error(), r.now())
+		result := operation.recordOutcome(StateFailed, OutcomeDeviceFailure, "protection-open", err.Error(), r.now())
 		return result, err
 	}
 	operation.record(StateRestoring, "primary-connect", "connecting recovered primary path", r.now())
 	if _, err := r.activator.Primary(ctx, target, r.now()); err != nil {
-		result := operation.record(StateFailed, "primary-connect", err.Error(), r.now())
+		result := operation.recordOutcome(StateFailed, classify(ctx, err), "primary-connect", err.Error(), r.now())
 		return result, fmt.Errorf("connect primary: %w", err)
 	}
 	return operation.record(StateCompleted, "complete", "primary route restored", r.now()), nil

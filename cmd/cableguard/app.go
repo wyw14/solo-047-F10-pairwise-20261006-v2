@@ -67,7 +67,7 @@ func buildServices(cfg config) (*api.Services, error) {
 	otdrService := otdr.NewSessionService(topologies, scanner, ids, now)
 	drainer := route.NewDrainer(4 * time.Millisecond)
 	activator := route.NewActivator(topologies)
-	switchovers := switchover.NewSessionService(drainer, activator, ids, now, 25*time.Millisecond)
+	switchovers := switchover.NewSessionService(drainer, activator, topologies, ids, now, 25*time.Millisecond)
 	restorer := switchover.NewRestorer(drainer, activator, topologies, ids, now)
 
 	receipts := landing.NewReceiptRegistry()

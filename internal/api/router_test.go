@@ -64,7 +64,7 @@ func testServer(t *testing.T) *Server {
 		Spans: map[string]*span.Span{"S3": target}, Routes: map[string]*route.Route{"R-S3": path},
 		Repeaters: map[string]*repeater.Repeater{"R07": repeaterAsset}, Topology: registry,
 		OTDR:        otdr.NewSessionService(registry, landing.NewScanner(registry, 0), ids, clock.Now),
-		Switchovers: switchover.NewSessionService(drainer, activator, ids, clock.Now, time.Second),
+		Switchovers: switchover.NewSessionService(drainer, activator, registry, ids, clock.Now, time.Second),
 		Permits:     permitService, Receipts: receipts, Acceptance: acceptance,
 		Telemetry: telemetry.NewIngestor(repository, clock.Now, projector), TelemetryRepository: repository,
 		Admission: incident.NewAdmissionService(telemetry.NewMuteManager(clock.Now)),
@@ -106,5 +106,50 @@ func TestHealthAndScanHTTPFlow(t *testing.T) {
 	server.Handler().ServeHTTP(status, httptest.NewRequest(http.MethodGet, "/api/system/status", nil))
 	if status.Code != http.StatusOK {
 		t.Fatalf("status code=%d body=%s", status.Code, status.Body.String())
+	}
+}
+
+func TestSwitchoverHTTPFlow(t *testing.T) {
+	server := testServer(t)
+	body, _ := json.Marshal(SwitchoverRequest{Reason: "fiber cut"})
+	first := httptest.NewRecorder()
+	server.Handler().ServeHTTP(first, httptest.NewRequest(http.MethodPost, "/api/routes/R-S3/switchovers", bytes.NewReader(body)))
+	if first.Code != http.StatusAccepted {
+		t.Fatalf("switchover status=%d body=%s", first.Code, first.Body.String())
+	}
+	var operation switchover.Snapshot
+	if err := json.Unmarshal(first.Body.Bytes(), &operation); err != nil {
+		t.Fatal(err)
+	}
+	if operation.State != switchover.StateProtected {
+		t.Fatalf("unexpected operation state: %+v", operation)
+	}
+
+	replay := httptest.NewRecorder()
+	server.Handler().ServeHTTP(replay, httptest.NewRequest(http.MethodPost, "/api/routes/R-S3/switchovers", bytes.NewReader(body)))
+	var reused switchover.Snapshot
+	if err := json.Unmarshal(replay.Body.Bytes(), &reused); err != nil {
+		t.Fatal(err)
+	}
+	if replay.Code != http.StatusAccepted || reused.ID != operation.ID {
+		t.Fatalf("repeated request must reuse operation %s, got status=%d %+v", operation.ID, replay.Code, reused)
+	}
+
+	restoreBody, _ := json.Marshal(SwitchoverRequest{Action: "restore-primary"})
+	restored := httptest.NewRecorder()
+	server.Handler().ServeHTTP(restored, httptest.NewRequest(http.MethodPost, "/api/routes/R-S3/switchovers", bytes.NewReader(restoreBody)))
+	var completed switchover.Snapshot
+	if err := json.Unmarshal(restored.Body.Bytes(), &completed); err != nil {
+		t.Fatal(err)
+	}
+	if restored.Code != http.StatusAccepted || completed.ID != operation.ID || completed.State != switchover.StateCompleted {
+		t.Fatalf("restore-primary must complete the original operation, got status=%d %+v", restored.Code, completed)
+	}
+
+	unsupportedBody, _ := json.Marshal(SwitchoverRequest{Action: "bounce"})
+	unsupported := httptest.NewRecorder()
+	server.Handler().ServeHTTP(unsupported, httptest.NewRequest(http.MethodPost, "/api/routes/R-S3/switchovers", bytes.NewReader(unsupportedBody)))
+	if unsupported.Code != http.StatusBadRequest {
+		t.Fatalf("unsupported action status=%d body=%s", unsupported.Code, unsupported.Body.String())
 	}
 }

@@ -24,6 +24,7 @@ type ScanRequest struct {
 
 type SwitchoverRequest struct {
 	Reason string `json:"reason"`
+	Action string `json:"action"`
 }
 
 type IsolationRequest struct {
