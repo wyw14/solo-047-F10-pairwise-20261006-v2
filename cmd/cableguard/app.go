@@ -67,8 +67,7 @@ func buildServices(cfg config) (*api.Services, error) {
 	otdrService := otdr.NewSessionService(topologies, scanner, ids, now)
 	drainer := route.NewDrainer(4 * time.Millisecond)
 	activator := route.NewActivator(topologies)
-	switchovers := switchover.NewSessionService(drainer, activator, ids, now, 25*time.Millisecond)
-	restorer := switchover.NewRestorer(drainer, activator, topologies, ids, now)
+	switchovers := switchover.NewManager(drainer, activator, topologies, ids, now, 25*time.Millisecond)
 
 	receipts := landing.NewReceiptRegistry()
 	isolation := feed.NewIsolationService()
@@ -81,7 +80,7 @@ func buildServices(cfg config) (*api.Services, error) {
 		permits.RegisterCircuit(circuit)
 	}
 
-	acceptance := repair.NewAcceptanceService(restorer, now)
+	acceptance := repair.NewAcceptanceService(switchovers, now)
 	acceptance.Register("S3", spanS3, routeS3)
 	station, err := landing.NewStation("east", "East Landing", now())
 	if err != nil {

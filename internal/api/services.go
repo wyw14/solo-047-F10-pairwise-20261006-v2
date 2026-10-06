@@ -30,7 +30,7 @@ type Services struct {
 	Repeaters           map[string]*repeater.Repeater
 	Topology            *topology.Registry
 	OTDR                *otdr.SessionService
-	Switchovers         *switchover.SessionService
+	Switchovers         *switchover.Manager
 	Permits             *repair.PermitService
 	Receipts            *landing.ReceiptRegistry
 	Acceptance          *repair.AcceptanceService

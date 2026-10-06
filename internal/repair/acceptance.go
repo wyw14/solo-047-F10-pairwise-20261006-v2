@@ -2,6 +2,7 @@ package repair
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -21,17 +22,21 @@ type Acceptance struct {
 	UpdatedAt time.Time        `json:"updated_at"`
 }
 
+type primaryRestorer interface {
+	Restore(ctx context.Context, target *route.Route) (switchover.Snapshot, error)
+}
+
 type AcceptanceService struct {
 	mu          sync.Mutex
 	proofSets   map[string]*otdr.ProofSet
 	acceptances map[string]Acceptance
 	spans       map[string]*span.Span
 	routes      map[string]*route.Route
-	restorer    *switchover.Restorer
+	restorer    primaryRestorer
 	now         func() time.Time
 }
 
-func NewAcceptanceService(restorer *switchover.Restorer, now func() time.Time) *AcceptanceService {
+func NewAcceptanceService(restorer primaryRestorer, now func() time.Time) *AcceptanceService {
 	return &AcceptanceService{
 		proofSets:   make(map[string]*otdr.ProofSet),
 		acceptances: make(map[string]Acceptance),
@@ -82,7 +87,7 @@ func (s *AcceptanceService) AddProof(ctx context.Context, acceptanceID, spanID s
 	if target.Snapshot().State != span.StateProving {
 		return Acceptance{}, fmt.Errorf("span %s is not in proving state", spanID)
 	}
-	if _, err := s.restorer.Restore(ctx, path); err != nil {
+	if _, err := s.restorer.Restore(ctx, path); err != nil && !errors.Is(err, switchover.ErrAlreadyPrimary) {
 		return Acceptance{}, err
 	}
 	if _, err := target.Recover(s.now()); err != nil {
